@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   fetchDatabases,
   fetchHealth,
@@ -16,6 +16,7 @@ function App() {
   const [objectsError, setObjectsError] = useState(null)
   const [filter, setFilter] = useState('')
   const [selected, setSelected] = useState(null)
+  const [connectedDb, setConnectedDb] = useState(null)
   const [definition, setDefinition] = useState({
     loading: false,
     text: null,
@@ -23,29 +24,36 @@ function App() {
     encrypted: false,
     error: null,
   })
+  const loadIdRef = useRef(0)
 
   const loadDatabase = useCallback(async (db, cancelled = () => false) => {
+    const loadId = ++loadIdRef.current
+
     setStatus({ loading: true, ok: null, error: null })
+    setConnectedDb(null)
     setGroups([])
     setObjectsError(null)
     setSelected(null)
     setDefinition({ loading: false, text: null, typeDesc: null, encrypted: false, error: null })
 
+    const stale = () => cancelled() || loadId !== loadIdRef.current
+
     try {
       const health = await fetchHealth(db)
-      if (cancelled()) return
+      if (stale()) return
       setStatus({ loading: false, ok: health.ok, error: null })
+      setConnectedDb(health.database ?? db)
 
       try {
         const { groups: list } = await fetchObjects(db)
-        if (cancelled()) return
+        if (stale()) return
         setGroups(Array.isArray(list) ? list : [])
       } catch (err) {
-        if (cancelled()) return
+        if (stale()) return
         setObjectsError(err.message)
       }
     } catch (err) {
-      if (cancelled()) return
+      if (stale()) return
       setStatus({ loading: false, ok: false, error: err.message })
     }
   }, [])
@@ -167,7 +175,7 @@ function App() {
             {status.loading && 'Connecting…'}
             {!status.loading && status.ok && (
               <>
-                Connected to <strong>{database}</strong>
+                Connected to <strong>{connectedDb ?? database}</strong>
               </>
             )}
             {!status.loading && !status.ok && (

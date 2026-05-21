@@ -59,7 +59,9 @@ function getConfig(database) {
 export async function getPool(database) {
   const db = assertDatabase(database)
   if (!pools.has(db)) {
-    pools.set(db, await sql.connect(getConfig(db)))
+    const pool = new sql.ConnectionPool(getConfig(db))
+    await pool.connect()
+    pools.set(db, pool)
   }
   return pools.get(db)
 }
