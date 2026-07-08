@@ -31,6 +31,33 @@
   font-size: 24px;
 }
 
+.mode-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.mode-tabs button {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font: 14px var(--sans);
+  cursor: pointer;
+}
+
+.mode-tabs button:hover {
+  background: var(--code-bg);
+}
+
+.mode-tabs button.active {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--text-h);
+}
+
 .header-controls {
   display: flex;
   flex-wrap: wrap;
@@ -278,4 +305,131 @@
   background: none;
   padding: 0;
   font-size: inherit;
+}
+
+.diff-different {
+  color: #b45309;
+}
+
+.diff-onlyDev {
+  color: #2563eb;
+}
+
+.diff-onlyProd {
+  color: #dc2626;
+}
+
+.diff-ignored,
+.diff-same {
+  opacity: 0.7;
+}
+
+@media (prefers-color-scheme: dark) {
+  .diff-different {
+    color: #fbbf24;
+  }
+
+  .diff-onlyDev {
+    color: #60a5fa;
+  }
+
+  .diff-onlyProd {
+    color: #f87171;
+  }
+}
+
+.badge-different {
+  background: rgba(180, 83, 9, 0.14);
+  color: #b45309;
+}
+
+.badge-onlyDev {
+  background: rgba(37, 99, 235, 0.14);
+  color: #2563eb;
+}
+
+.badge-onlyProd {
+  background: rgba(220, 38, 38, 0.14);
+  color: #dc2626;
+}
+
+.badge-same {
+  background: rgba(22, 163, 74, 0.14);
+  color: #16a34a;
+}
+
+@media (prefers-color-scheme: dark) {
+  .badge-different {
+    color: #fbbf24;
+  }
+
+  .badge-onlyDev {
+    color: #60a5fa;
+  }
+
+  .badge-onlyProd {
+    color: #f87171;
+  }
+
+  .badge-same {
+    color: #4ade80;
+  }
+}
+
+.side-by-side {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+.diff-column {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.diff-column-title {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.diff-view {
+  white-space: pre;
+}
+
+.diff-line {
+  display: inline;
+}
+
+.diff-line--del {
+  background: rgba(220, 38, 38, 0.14);
+  color: #b91c1c;
+}
+
+.diff-line--add {
+  background: rgba(22, 163, 74, 0.14);
+  color: #15803d;
+}
+
+@media (prefers-color-scheme: dark) {
+  .diff-line--del {
+    background: rgba(248, 113, 113, 0.16);
+    color: #fca5a5;
+  }
+
+  .diff-line--add {
+    background: rgba(74, 222, 128, 0.16);
+    color: #86efac;
+  }
+}
+
+@media (max-width: 768px) {
+  .side-by-side {
+    grid-template-columns: 1fr;
+  }
 }

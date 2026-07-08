@@ -1,7 +1,8 @@
 import express from 'express'
 import cors from 'cors'
-import { assertDatabase, getDatabases, getPool, sql } from './db.js'
+import { assertDatabase, assertServer, getDatabases, getPool, getServers, sql } from './db.js'
 import { buildTableDefinition } from './tableDef.js'
+import { buildComparison, getComparable } from './compare.js'
 
 const app = express()
 const PORT = parseInt(process.env.PORT || '3001', 10)
@@ -10,6 +11,14 @@ const PROC_TYPES = ['P', 'FN', 'IF', 'TF', 'TR']
 
 app.use(cors())
 app.use(express.json())
+
+function parseServer(req) {
+  const server = req.query.server || getServers()[0]?.id
+  if (!server) {
+    throw new Error('No SQL Server configured. Check your .env file.')
+  }
+  return assertServer(server)
+}
 
 function parseDatabase(req) {
   const database = req.query.database || getDatabases()[0]
@@ -54,6 +63,14 @@ function groupObjects(rows) {
   ]
 }
 
+app.get('/api/servers', (_req, res) => {
+  try {
+    res.json({ servers: getServers() })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 app.get('/api/databases', (_req, res) => {
   try {
     res.json({ databases: getDatabases() })
@@ -64,11 +81,13 @@ app.get('/api/databases', (_req, res) => {
 
 app.get('/api/health', async (req, res) => {
   try {
+    const server = parseServer(req)
     const database = parseDatabase(req)
-    const pool = await getPool(database)
+    const pool = await getPool(server, database)
     const result = await pool.request().query('SELECT DB_NAME() AS databaseName')
     res.json({
       ok: true,
+      server,
       database: result.recordset[0]?.databaseName ?? database,
     })
   } catch (err) {
@@ -81,8 +100,9 @@ app.get('/api/health', async (req, res) => {
 
 app.get('/api/objects', async (req, res) => {
   try {
+    const server = parseServer(req)
     const database = parseDatabase(req)
-    const pool = await getPool(database)
+    const pool = await getPool(server, database)
 
     const tables = await pool.request().query(`
       SELECT
@@ -108,7 +128,40 @@ app.get('/api/objects', async (req, res) => {
     `)
 
     const all = [...tables.recordset, ...code.recordset]
-    res.json({ database, groups: groupObjects(all) })
+    res.json({ server, database, groups: groupObjects(all) })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.get('/api/compare', async (req, res) => {
+  try {
+    const servers = getServers()
+    const dev = servers.find((s) => s.id === 'dev')
+    const prod = servers.find((s) => s.id === 'prod')
+
+    if (!dev || !prod) {
+      throw new Error('Compare needs both Dev and Prod servers configured in .env')
+    }
+
+    const database = parseDatabase(req)
+
+    const [devPool, prodPool] = await Promise.all([
+      getPool(dev.id, database),
+      getPool(prod.id, database),
+    ])
+
+    const [devMap, prodMap] = await Promise.all([
+      getComparable(devPool),
+      getComparable(prodPool),
+    ])
+
+    res.json({
+      database,
+      dev,
+      prod,
+      groups: buildComparison(devMap, prodMap),
+    })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
@@ -120,8 +173,9 @@ app.get('/api/tables/:schema/:name/definition', async (req, res) => {
   try {
     validateIdentifier(schema, 'schema')
     validateIdentifier(name, 'table name')
+    const server = parseServer(req)
     const database = parseDatabase(req)
-    const pool = await getPool(database)
+    const pool = await getPool(server, database)
     const definition = await buildTableDefinition(pool, schema, name)
 
     if (definition === null) {
@@ -129,6 +183,7 @@ app.get('/api/tables/:schema/:name/definition', async (req, res) => {
     }
 
     res.json({
+      server,
       database,
       schema,
       name,
@@ -148,8 +203,9 @@ app.get('/api/objects/:schema/:name/definition', async (req, res) => {
   try {
     validateIdentifier(schema, 'schema')
     validateIdentifier(name, 'object name')
+    const server = parseServer(req)
     const database = parseDatabase(req)
-    const pool = await getPool(database)
+    const pool = await getPool(server, database)
 
     const found = await pool
       .request()
@@ -181,6 +237,7 @@ app.get('/api/objects/:schema/:name/definition', async (req, res) => {
     const definition = def.recordset[0]?.definition ?? null
 
     res.json({
+      server,
       database,
       schema,
       name,

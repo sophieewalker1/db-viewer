@@ -7,16 +7,24 @@ async function request(path) {
   return data
 }
 
-function withDatabase(database) {
-  return new URLSearchParams({ database })
+function params(obj) {
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(obj)) {
+    if (value != null && value !== '') search.set(key, value)
+  }
+  return search
+}
+
+export function fetchServers() {
+  return request('/api/servers')
 }
 
 export function fetchDatabases() {
   return request('/api/databases')
 }
 
-export function fetchHealth(database) {
-  return request(`/api/health?${withDatabase(database)}`)
+export function fetchHealth(database, server) {
+  return request(`/api/health?${params({ database, server })}`)
 }
 
 const EMPTY_GROUPS = [
@@ -63,21 +71,29 @@ function normalizeGroups(data) {
   return EMPTY_GROUPS
 }
 
-export async function fetchObjects(database) {
-  const data = await request(`/api/objects?${withDatabase(database)}`)
+export async function fetchObjects(database, server) {
+  const data = await request(`/api/objects?${params({ database, server })}`)
   return { ...data, groups: normalizeGroups(data) }
 }
 
-export function fetchObjectDefinition(database, schema, name) {
-  const params = withDatabase(database)
+export function fetchCompare(database) {
+  return request(`/api/compare?${params({ database })}`)
+}
+
+export function fetchObjectDefinition(database, schema, name, server) {
   return request(
-    `/api/objects/${encodeURIComponent(schema)}/${encodeURIComponent(name)}/definition?${params}`,
+    `/api/objects/${encodeURIComponent(schema)}/${encodeURIComponent(name)}/definition?${params({ database, server })}`,
   )
 }
 
-export function fetchTableDefinition(database, schema, name) {
-  const params = withDatabase(database)
+export function fetchTableDefinition(database, schema, name, server) {
   return request(
-    `/api/tables/${encodeURIComponent(schema)}/${encodeURIComponent(name)}/definition?${params}`,
+    `/api/tables/${encodeURIComponent(schema)}/${encodeURIComponent(name)}/definition?${params({ database, server })}`,
   )
+}
+
+export function fetchDefinitionFor(database, item, server) {
+  return item.groupId === 'tables'
+    ? fetchTableDefinition(database, item.schema, item.name, server)
+    : fetchObjectDefinition(database, item.schema, item.name, server)
 }
