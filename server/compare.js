@@ -9,13 +9,21 @@ function groupIdForType(type) {
   return 'other'
 }
 
+// Strip comments and collapse all whitespace (newlines, tabs, indent)
+// so only real SQL token differences count.
 function normalize(text) {
   if (!text) return ''
   return text
     .replace(/\r\n/g, '\n')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
     .split('\n')
-    .map((line) => line.replace(/\s+$/, ''))
-    .join('\n')
+    .map((line) => {
+      const comment = line.indexOf('--')
+      if (comment >= 0) line = line.slice(0, comment)
+      return line
+    })
+    .join(' ')
+    .replace(/\s+/g, ' ')
     .trim()
 }
 

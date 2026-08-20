@@ -1,74 +1,93 @@
-function normalize(text) {
-  if (!text) return ''
-  return text
+function stripComments(text) {
+  return (text || '')
     .replace(/\r\n/g, '\n')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
     .split('\n')
-    .map((line) => line.replace(/\s+$/, ''))
+    .map((line) => {
+      const comment = line.indexOf('--')
+      return comment >= 0 ? line.slice(0, comment) : line
+    })
     .join('\n')
-    .trim()
 }
 
-// Line-based diff using a longest-common-subsequence walk.
-// Returns rows of { type: 'same' | 'add' | 'del', text } where
-// 'del' is present in `aText` (left/Dev) and 'add' in `bText` (right/Prod).
-export function diffLines(aText, bText) {
-  const a = normalize(aText).split('\n')
-  const b = normalize(bText).split('\n')
+function originalLines(text) {
+  return (text || '').replace(/\r\n/g, '\n').split('\n')
+}
+
+// Tokens with the original line they came from, so we can highlight
+// while ignoring newlines / tabs / indentation for matching.
+function tokensWithLines(text) {
+  const lines = stripComments(text).split('\n')
+  const tokens = []
+  for (let index = 0; index < lines.length; index++) {
+    const parts = lines[index].match(/\S+/g)
+    if (!parts) continue
+    for (const key of parts) {
+      tokens.push({ index, key })
+    }
+  }
+  return tokens
+}
+
+function changedIndexes(aText, bText) {
+  const a = tokensWithLines(aText)
+  const b = tokensWithLines(bText)
   const m = a.length
   const n = b.length
 
   const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0))
   for (let i = m - 1; i >= 0; i--) {
     for (let j = n - 1; j >= 0; j--) {
-      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1])
+      dp[i][j] =
+        a[i].key === b[j].key
+          ? dp[i + 1][j + 1] + 1
+          : Math.max(dp[i + 1][j], dp[i][j + 1])
     }
   }
 
-  const rows = []
+  const left = new Set()
+  const right = new Set()
   let i = 0
   let j = 0
   while (i < m && j < n) {
-    if (a[i] === b[j]) {
-      rows.push({ type: 'same', text: a[i] })
+    if (a[i].key === b[j].key) {
       i++
       j++
     } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-      rows.push({ type: 'del', text: a[i] })
+      left.add(a[i].index)
       i++
     } else {
-      rows.push({ type: 'add', text: b[j] })
+      right.add(b[j].index)
       j++
     }
   }
   while (i < m) {
-    rows.push({ type: 'del', text: a[i] })
+    left.add(a[i].index)
     i++
   }
   while (j < n) {
-    rows.push({ type: 'add', text: b[j] })
+    right.add(b[j].index)
     j++
-  }
-  return rows
-}
-
-// Splits a diff into two independent columns for a side-by-side view.
-// Each column keeps only its own lines (so a full copy of one side yields
-// exactly that side's text), with `changed` flagging lines that differ.
-export function diffColumns(aText, bText) {
-  const rows = diffLines(aText, bText)
-  const left = []
-  const right = []
-
-  for (const row of rows) {
-    if (row.type === 'same') {
-      left.push({ text: row.text, changed: false })
-      right.push({ text: row.text, changed: false })
-    } else if (row.type === 'del') {
-      left.push({ text: row.text, changed: true })
-    } else {
-      right.push({ text: row.text, changed: true })
-    }
   }
 
   return { left, right }
+}
+
+// Side-by-side columns with original text (copy/paste friendly).
+// Matching ignores comments and all whitespace (newlines, tabs, indent).
+export function diffColumns(aText, bText) {
+  const aLines = originalLines(aText)
+  const bLines = originalLines(bText)
+  const { left: changedLeft, right: changedRight } = changedIndexes(aText, bText)
+
+  return {
+    left: aLines.map((text, index) => ({
+      text,
+      changed: changedLeft.has(index),
+    })),
+    right: bLines.map((text, index) => ({
+      text,
+      changed: changedRight.has(index),
+    })),
+  }
 }
