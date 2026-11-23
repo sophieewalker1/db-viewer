@@ -3,11 +3,14 @@ import {
   fetchCompare,
   fetchDatabases,
   fetchDefinitionFor,
+  fetchExportExclusions,
   fetchHealth,
   fetchObjectDefinition,
   fetchObjects,
   fetchServers,
   fetchTableDefinition,
+  runExport,
+  saveExportExclusions,
 } from './api'
 import { diffColumns } from './diff'
 import './App.css'
@@ -19,7 +22,8 @@ function App() {
   const [database, setDatabase] = useState('')
 
   const isCompare = view === 'compare'
-  const activeServer = isCompare ? null : view
+  const isExport = view === 'export'
+  const activeServer = isCompare || isExport ? null : view
 
   useEffect(() => {
     let cancelled = false
@@ -73,9 +77,20 @@ function App() {
               Compare
             </button>
           )}
+          {servers.length > 0 && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={isExport}
+              className={isExport ? 'active' : ''}
+              onClick={() => setView('export')}
+            >
+              Export
+            </button>
+          )}
         </div>
         <div className="header-controls">
-          {databases.length > 0 && (
+          {databases.length > 0 && !isExport && (
             <label className="db-select">
               Database
               <select value={database} onChange={(e) => setDatabase(e.target.value)}>
@@ -92,6 +107,8 @@ function App() {
 
       {isCompare ? (
         <CompareView database={database} />
+      ) : isExport ? (
+        <ExportView servers={servers} databases={databases} />
       ) : (
         <BrowseView server={activeServer} database={database} />
       )}
@@ -509,6 +526,340 @@ function DiffColumn({ label, tone, lines }) {
           ))}
         </code>
       </pre>
+    </div>
+  )
+}
+
+const EMPTY_EXCLUSIONS = { excludedDatabases: [], excludedObjects: {} }
+
+const objectKey = (o) => `${o.schema}.${o.name}`
+
+function withObjectsIncluded(exclusions, db, keys, include) {
+  const lower = new Set(keys.map((k) => k.toLowerCase()))
+  const kept = (exclusions.excludedObjects[db] ?? []).filter((k) => !lower.has(k.toLowerCase()))
+  return {
+    ...exclusions,
+    excludedObjects: { ...exclusions.excludedObjects, [db]: include ? kept : [...kept, ...keys] },
+  }
+}
+
+function withDatabaseIncluded(exclusions, db, include) {
+  const kept = exclusions.excludedDatabases.filter((d) => d !== db)
+  return { ...exclusions, excludedDatabases: include ? kept : [...kept, db] }
+}
+
+function Checkbox({ checked, indeterminate = false, onChange, label, disabled }) {
+  return (
+    <input
+      type="checkbox"
+      aria-label={label}
+      checked={checked}
+      disabled={disabled}
+      ref={(el) => {
+        if (el) el.indeterminate = indeterminate
+      }}
+      onChange={(e) => onChange(e.target.checked)}
+    />
+  )
+}
+
+function ExportView({ servers, databases }) {
+  const [server, setServer] = useState(
+    () => servers.find((s) => s.id === 'prod')?.id ?? servers[0]?.id ?? '',
+  )
+  const [exclusions, setExclusions] = useState(null)
+  const [exclusionsError, setExclusionsError] = useState(null)
+  const [objects, setObjects] = useState({})
+  const [filter, setFilter] = useState('')
+  const [collapsed, setCollapsed] = useState(() => new Set())
+  const [result, setResult] = useState({ loading: false, error: null, data: null })
+  const [copied, setCopied] = useState(false)
+  const saveChainRef = useRef(Promise.resolve())
+
+  useEffect(() => {
+    let cancelled = false
+    fetchExportExclusions()
+      .then((data) => {
+        if (!cancelled) setExclusions({ ...EMPTY_EXCLUSIONS, ...data })
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setExclusionsError(`Could not load saved exclusions: ${err.message}`)
+        setExclusions(EMPTY_EXCLUSIONS)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!server) return
+    let cancelled = false
+    setResult({ loading: false, error: null, data: null })
+    setObjects(Object.fromEntries(databases.map((db) => [db, { loading: true }])))
+
+    for (const db of databases) {
+      fetchObjects(db, server)
+        .then(({ groups }) => {
+          if (!cancelled) setObjects((prev) => ({ ...prev, [db]: { groups } }))
+        })
+        .catch((err) => {
+          if (!cancelled) setObjects((prev) => ({ ...prev, [db]: { error: err.message } }))
+        })
+    }
+    return () => {
+      cancelled = true
+    }
+  }, [server, databases])
+
+  function update(next) {
+    setExclusions(next)
+    setExclusionsError(null)
+    saveChainRef.current = saveChainRef.current
+      .then(() => saveExportExclusions(next))
+      .catch((err) => setExclusionsError(`Could not save exclusions: ${err.message}`))
+  }
+
+  function toggleCollapsed(db) {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(db)) next.delete(db)
+      else next.add(db)
+      return next
+    })
+  }
+
+  async function handleExport() {
+    setResult({ loading: true, error: null, data: null })
+    setCopied(false)
+    try {
+      const data = await runExport(server, exclusions)
+      setResult({ loading: false, error: null, data })
+    } catch (err) {
+      setResult({ loading: false, error: err.message, data: null })
+    }
+  }
+
+  function handleDownload() {
+    const { text, filename } = result.data
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/markdown' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(result.data.text)
+      setCopied(true)
+    } catch (err) {
+      setResult((prev) => ({ ...prev, error: `Copy failed: ${err.message}` }))
+    }
+  }
+
+  const q = filter.trim().toLowerCase()
+  const ready = exclusions !== null
+
+  let selectedDbs = 0
+  let selectedObjects = 0
+  let totalObjects = 0
+
+  const dbViews = databases.map((db) => {
+    const state = objects[db] ?? { loading: true }
+    const dbIncluded = ready && !exclusions.excludedDatabases.includes(db)
+    const excludedLower = new Set(
+      (ready ? (exclusions.excludedObjects[db] ?? []) : []).map((k) => k.toLowerCase()),
+    )
+    const isIncluded = (o) => !excludedLower.has(objectKey(o).toLowerCase())
+
+    const groups = (state.groups ?? []).map((group) => {
+      const items = group.items.filter(
+        (o) =>
+          !q ||
+          objectKey(o).toLowerCase().includes(q) ||
+          (o.typeDesc && o.typeDesc.toLowerCase().includes(q)),
+      )
+      const included = group.items.filter(isIncluded).length
+      if (dbIncluded) selectedObjects += included
+      totalObjects += group.items.length
+      return { ...group, total: group.items.length, included, items }
+    })
+
+    if (dbIncluded) selectedDbs += 1
+    return { db, state, dbIncluded, isIncluded, groups }
+  })
+
+  return (
+    <div className="viewer-body">
+      <aside className="sidebar export-sidebar" aria-label="Export selection">
+        <h2>Export</h2>
+        <div className="mode-tabs export-server-tabs" role="tablist" aria-label="Export server">
+          {servers.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              role="tab"
+              aria-selected={server === s.id}
+              className={server === s.id ? 'active' : ''}
+              onClick={() => setServer(s.id)}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+        <p className="sidebar-hint">Unchecked items are remembered for next time.</p>
+        <input
+          type="search"
+          className="filter-input"
+          placeholder="Filter…"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+        />
+        {exclusionsError && <p className="error">{exclusionsError}</p>}
+        <div className="sidebar-scroll">
+          {dbViews.map(({ db, state, dbIncluded, isIncluded, groups }) => {
+            const isCollapsed = collapsed.has(db)
+            return (
+              <section
+                key={db}
+                className={`export-db${dbIncluded ? '' : ' export-db--excluded'}`}
+              >
+                <h3 className="export-db-header">
+                  <Checkbox
+                    label={`Include database ${db}`}
+                    checked={dbIncluded}
+                    disabled={!ready}
+                    onChange={(include) => update(withDatabaseIncluded(exclusions, db, include))}
+                  />
+                  <button
+                    type="button"
+                    className="export-db-toggle"
+                    aria-expanded={!isCollapsed}
+                    onClick={() => toggleCollapsed(db)}
+                  >
+                    <span className="export-caret">{isCollapsed ? '▸' : '▾'}</span>
+                    {db}
+                  </button>
+                </h3>
+
+                {!isCollapsed && (
+                  <div className="export-db-body">
+                    {state.loading && <p className="muted">Loading…</p>}
+                    {state.error && <p className="error">{state.error}</p>}
+                    {groups
+                      .filter((g) => g.items.length > 0)
+                      .map((group) => {
+                        const visibleKeys = group.items.map(objectKey)
+                        const visibleIncluded = group.items.filter(isIncluded).length
+                        return (
+                          <section key={group.id} className="object-group">
+                            <label className="group-header export-group-header">
+                              <span className="export-check-label">
+                                <Checkbox
+                                  label={`Include all ${group.label} in ${db}`}
+                                  checked={visibleIncluded === group.items.length}
+                                  indeterminate={
+                                    visibleIncluded > 0 && visibleIncluded < group.items.length
+                                  }
+                                  disabled={!ready}
+                                  onChange={(include) =>
+                                    update(
+                                      withObjectsIncluded(exclusions, db, visibleKeys, include),
+                                    )
+                                  }
+                                />
+                                {group.label}
+                              </span>
+                              <span className="group-count">
+                                {group.included}/{group.total}
+                              </span>
+                            </label>
+                            <ul className="object-list export-list">
+                              {group.items.map((o) => (
+                                <li key={`${group.id}-${o.type}-${objectKey(o)}`}>
+                                  <label className="export-item">
+                                    <Checkbox
+                                      label={`Include ${objectKey(o)}`}
+                                      checked={isIncluded(o)}
+                                      disabled={!ready}
+                                      onChange={(include) =>
+                                        update(
+                                          withObjectsIncluded(
+                                            exclusions,
+                                            db,
+                                            [objectKey(o)],
+                                            include,
+                                          ),
+                                        )
+                                      }
+                                    />
+                                    <span className="obj-name">{objectKey(o)}</span>
+                                    {group.id === 'procedures' && o.type !== 'P' && (
+                                      <span className="obj-type">{shortType(o.typeDesc)}</span>
+                                    )}
+                                  </label>
+                                </li>
+                              ))}
+                            </ul>
+                          </section>
+                        )
+                      })}
+                  </div>
+                )}
+              </section>
+            )
+          })}
+        </div>
+      </aside>
+
+      <main className="main">
+        <div className="export-summary">
+          <p className="muted">
+            {selectedDbs} of {databases.length} databases, {selectedObjects} of {totalObjects}{' '}
+            objects selected.
+          </p>
+          <div className="export-actions">
+            <button
+              type="button"
+              className="primary-button"
+              disabled={!ready || result.loading || selectedDbs === 0}
+              onClick={handleExport}
+            >
+              {result.loading ? 'Exporting…' : 'Generate export'}
+            </button>
+            {result.data && (
+              <>
+                <button type="button" className="secondary-button" onClick={handleDownload}>
+                  Download .md
+                </button>
+                <button type="button" className="secondary-button" onClick={handleCopy}>
+                  {copied ? 'Copied!' : 'Copy to clipboard'}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {result.error && <p className="error">{result.error}</p>}
+        {!result.data && !result.loading && !result.error && (
+          <p className="muted">
+            Pick what to include on the left, then generate a Markdown file you can hand to an AI.
+          </p>
+        )}
+        {result.data && (
+          <>
+            <p className="muted export-file-info">
+              {result.data.filename}: {result.data.counts.tables} tables,{' '}
+              {result.data.counts.code} views/procedures/functions/triggers.
+            </p>
+            <pre className="definition">
+              <code>{result.data.text}</code>
+            </pre>
+          </>
+        )}
+      </main>
     </div>
   )
 }

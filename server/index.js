@@ -3,6 +3,8 @@ import cors from 'cors'
 import { assertDatabase, assertServer, getDatabases, getPool, getServers, sql } from './db.js'
 import { buildTableDefinition } from './tableDef.js'
 import { buildComparison, getComparable } from './compare.js'
+import { exportDatabase, exportHeader } from './export.js'
+import { loadExclusions, sanitizeExclusions, saveExclusions } from './exportExclusions.js'
 
 const app = express()
 const PORT = parseInt(process.env.PORT || '3001', 10)
@@ -161,6 +163,64 @@ app.get('/api/compare', async (req, res) => {
       dev,
       prod,
       groups: buildComparison(devMap, prodMap),
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.get('/api/export/exclusions', async (_req, res) => {
+  try {
+    res.json(await loadExclusions())
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.put('/api/export/exclusions', async (req, res) => {
+  try {
+    res.json(await saveExclusions(req.body))
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.post('/api/export', async (req, res) => {
+  try {
+    const server = assertServer(req.body?.server)
+    const label = getServers().find((s) => s.id === server)?.label ?? server
+    const { excludedDatabases, excludedObjects } = sanitizeExclusions(req.body?.exclusions)
+    const databases = getDatabases().filter((db) => !excludedDatabases.includes(db))
+
+    if (!databases.length) {
+      return res.status(400).json({ error: 'No databases selected for export.' })
+    }
+
+    const sections = []
+    for (const database of databases) {
+      try {
+        const pool = await getPool(server, database)
+        sections.push(await exportDatabase(pool, database, excludedObjects[database]))
+      } catch (err) {
+        throw new Error(`${database}: ${err.message}`, { cause: err })
+      }
+    }
+
+    const partial =
+      excludedDatabases.length > 0 ||
+      databases.some((db) => excludedObjects[db]?.length)
+    const text = [exportHeader(label, databases, partial), ...sections.map((s) => s.text)].join(
+      '\n',
+    )
+    const stamp = new Date().toISOString().slice(0, 10)
+
+    res.json({
+      filename: `schema-${server}-${stamp}.md`,
+      text,
+      counts: sections.reduce(
+        (sum, s) => ({ tables: sum.tables + s.counts.tables, code: sum.code + s.counts.code }),
+        { tables: 0, code: 0 },
+      ),
     })
   } catch (err) {
     res.status(500).json({ error: err.message })

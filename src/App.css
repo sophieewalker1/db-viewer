@@ -433,3 +433,139 @@
     grid-template-columns: 1fr;
   }
 }
+
+.export-sidebar {
+  min-width: 18rem;
+}
+
+.export-server-tabs {
+  margin-bottom: 8px;
+}
+
+.export-sidebar input[type='checkbox'] {
+  accent-color: var(--accent);
+  margin: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.export-db {
+  margin-bottom: 12px;
+}
+
+.export-db-header {
+  margin: 0 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+}
+
+.export-db-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-h);
+  font: 600 15px var(--sans);
+  cursor: pointer;
+}
+
+.export-db-toggle:hover {
+  background: var(--code-bg);
+}
+
+.export-caret {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.export-db-body {
+  padding-left: 22px;
+}
+
+.export-db--excluded .export-db-body {
+  opacity: 0.45;
+}
+
+.export-group-header {
+  cursor: pointer;
+}
+
+.export-check-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.export-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.export-item:hover {
+  background: var(--code-bg);
+}
+
+.export-item .obj-type {
+  margin-left: auto;
+}
+
+.export-summary {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.export-summary p {
+  margin: 0;
+}
+
+.export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.primary-button,
+.secondary-button {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  font: 14px var(--sans);
+  cursor: pointer;
+  color: var(--text-h);
+  background: transparent;
+}
+
+.primary-button {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+}
+
+.primary-button:hover:not(:disabled),
+.secondary-button:hover {
+  background: var(--code-bg);
+}
+
+.primary-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.export-file-info {
+  flex-shrink: 0;
+  margin: 0 0 8px;
+}

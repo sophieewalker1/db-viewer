@@ -4,7 +4,7 @@ function quoteIdent(name) {
   return `[${name.replace(/]/g, ']]')}]`
 }
 
-function formatType(row) {
+export function formatType(row) {
   let type = row.type_name.toUpperCase()
   if (['varchar', 'char', 'varbinary', 'binary'].includes(row.type_name)) {
     const len = row.max_length === -1 ? 'MAX' : row.max_length

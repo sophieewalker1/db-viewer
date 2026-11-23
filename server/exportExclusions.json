@@ -1,0 +1,49 @@
+{
+  "excludedDatabases": [
+    "DIRECT_MAIL",
+    "DISPOSITIONS",
+    "Madera",
+    "POLICY_DIRECT"
+  ],
+  "excludedObjects": {
+    "CALL_TRADER": [
+      "dbo.ConvosoReportExcludedLeads",
+      "dbo.Convoso_Logs_Cleanup",
+      "dbo.FinancialReportPubIDLevel",
+      "dbo.FinancialReportSubIDLevel",
+      "dbo.PERCENT_OF",
+      "dbo.ReportPublisherLkp",
+      "dbo.RingbaCallLogForOptztn",
+      "dbo.callStatus",
+      "dbo.campaignsOptimized",
+      "dbo.dtaConvosoLogsNew",
+      "dbo.dtaZipCode",
+      "dbo.fn_GetCallTypeName",
+      "dbo.pubNameKey",
+      "dbo.ringbaConversionsTest",
+      "dbo.ringbaTargetPriority",
+      "dbo.stageConvosoLogs",
+      "dbo.successstatus",
+      "dbo.twyneImportLog",
+      "dbo.upd_twyne_ringba_tables",
+      "dbo.usp_ConvosoStagingImport",
+      "dbo.utlCallCenterLeadCost",
+      "dbo.utlCallCenterPublisherLkp",
+      "dbo.utlCallCenterPublisherPPLkp",
+      "dbo.utlConvosoCallType",
+      "dbo.utlConvosoCampaign",
+      "dbo.utlConvosoCarrier",
+      "dbo.utlConvosoExcludedLists",
+      "dbo.utlConvosoLogSource",
+      "dbo.utlConvosoPublisher",
+      "dbo.utlConvosoSource",
+      "dbo.utlConvosoStatus",
+      "dbo.utlConvosoSuccess",
+      "dbo.vw_convoso_date",
+      "dbo.vw_convoso_leads",
+      "dbo.vw_convoso_logs_counts",
+      "reports.ConvosoDate",
+      "reports.usp_ConvosoDateReport"
+    ]
+  }
+}

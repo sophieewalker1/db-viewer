@@ -1,5 +1,5 @@
-async function request(path) {
-  const res = await fetch(path)
+async function request(path, options) {
+  const res = await fetch(path, options)
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
     throw new Error(data.error || res.statusText || 'Request failed')
@@ -78,6 +78,26 @@ export async function fetchObjects(database, server) {
 
 export function fetchCompare(database) {
   return request(`/api/compare?${params({ database })}`)
+}
+
+function sendJson(path, method, body) {
+  return request(path, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export function fetchExportExclusions() {
+  return request('/api/export/exclusions')
+}
+
+export function saveExportExclusions(exclusions) {
+  return sendJson('/api/export/exclusions', 'PUT', exclusions)
+}
+
+export function runExport(server, exclusions) {
+  return sendJson('/api/export', 'POST', { server, exclusions })
 }
 
 export function fetchObjectDefinition(database, schema, name, server) {
